@@ -7,7 +7,7 @@ fakeroot python do_sign() {
     initramfs = None
 
     if d.getVar('BUNDLE', True) == '0':
-        initramfs = d.expand('${D}/boot/${INITRAMFS_IMAGE}${INITRAMFS_EXT_NAME}.cpio.gz')
+        initramfs = d.expand('${D}/boot/${INITRAMFS_IMAGE}${INITRAMFS_EXT_NAME}.${INITRAMFS_FSTYPES}')
     else:
         initramfs = d.expand('${D}/boot/${KERNEL_IMAGETYPE}-initramfs${INITRAMFS_EXT_NAME}')
 
@@ -24,8 +24,8 @@ do_deploy() {
     initramfs_dest=""
 
     if [ "${BUNDLE}" = "0" ]; then
-        initramfs="${D}/boot/${INITRAMFS_IMAGE}${INITRAMFS_EXT_NAME}.cpio.gz"
-        initramfs_dest="${DEPLOYDIR}/${INITRAMFS_IMAGE}-${MACHINE}.cpio.gz"
+        initramfs="${D}/boot/${INITRAMFS_IMAGE}${INITRAMFS_EXT_NAME}.${INITRAMFS_FSTYPES}"
+        initramfs_dest="${DEPLOYDIR}/${INITRAMFS_IMAGE}-${MACHINE}.${INITRAMFS_FSTYPES}"
     else
         initramfs="${D}/boot/${KERNEL_IMAGETYPE}-initramfs${INITRAMFS_EXT_NAME}"
         initramfs_dest="${DEPLOYDIR}/${KERNEL_IMAGETYPE}-initramfs-${MACHINE}.bin"
