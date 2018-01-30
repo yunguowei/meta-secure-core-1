@@ -1,0 +1,42 @@
+diff --git a/Src/Efi/Include/Mok2Verify.h b/Src/Efi/Include/Mok2Verify.h
+index 39d4d43..9b64b2c 100644
+--- a/Src/Efi/Include/Mok2Verify.h
++++ b/Src/Efi/Include/Mok2Verify.h
+@@ -60,6 +60,8 @@ EFI_STATUS
+   IN EFI_MOK2_VERIFY_PROTOCOL *This,
+   IN OUT VOID                 **Data,
+   IN OUT UINTN                *DataSize,
++  IN OUT VOID                 *SigData,
++  IN OUT UINTN                SigDataSize,
+   IN CONST CHAR16             *Path
+   );
+ 
+diff --git a/Src/Efi/Lib/Mok2Verify.c b/Src/Efi/Lib/Mok2Verify.c
+index 21f9060..1bcb979 100644
+--- a/Src/Efi/Lib/Mok2Verify.c
++++ b/Src/Efi/Lib/Mok2Verify.c
+@@ -77,15 +77,19 @@ Mok2VerifySignature(IN EFI_MOK2_VERIFY_PROTOCOL *This, IN VOID *Signature,
+ 
+ STATIC EFI_STATUS EFIAPI
+ Mok2VerifyFileBuffer(IN EFI_MOK2_VERIFY_PROTOCOL *This, IN OUT VOID **Data,
+-		     IN OUT UINTN *DataSize, IN CONST CHAR16 *Path)
++		     IN OUT UINTN *DataSize, IN OUT VOID *SigData, IN OUT UINTN SigDataSize, IN CONST CHAR16 *Path)
+ {
+-	if (!This || !Data || !DataSize || !Path)
++	EFI_STATUS Status;
++
++	if (!This || !Data || !DataSize || !SigData || !SigDataSize || !Path)
+ 		return EFI_INVALID_PARAMETER;
+ 
+-	EfiConsoleTraceDebug(L"Attempting to verify file buffer %s by MOK2 "
++	EfiConsoleTraceDebug(L"Fupan Li Attempting to verify file buffer %s by MOK2 "
+ 			     L"Verify Protocol ...\n", Path);
+-
+-	return EFI_UNSUPPORTED;
++	
++	Status = EfiSignatureVerifyAttached(SigData, SigDataSize, Data, DataSize);
++	
++	return Status;
+ }
+ 
+ STATIC EFI_STATUS EFIAPI

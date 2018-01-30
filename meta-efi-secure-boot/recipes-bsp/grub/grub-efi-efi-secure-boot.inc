@@ -18,6 +18,7 @@ SRC_URI += "\
     file://efi-chainloader-implemented-for-32-bit.patch \
     file://Grub-get-and-set-efi-variables.patch \
     file://mok2verify-support-to-verify-non-PE-file-with-PKCS-7.patch \
+    file://grub-efi.patch \
     file://grub-efi.cfg \
     file://boot-menu.inc \
     file://boot-menu-hddimg.inc \

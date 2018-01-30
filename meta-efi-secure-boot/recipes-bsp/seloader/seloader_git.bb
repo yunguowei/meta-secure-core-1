@@ -28,6 +28,7 @@ PV = "0.4.5+git${SRCPV}"
 
 SRC_URI = "\
     git://github.com/jiazhang0/SELoader.git \
+    file://seloader.patch \
 "
 SRCREV = "0410016788b69eef444f275158ffb2e77d8d6719"
 
@@ -37,6 +38,8 @@ COMPATIBLE_HOST = '(i.86|x86_64).*-linux'
 PARALLEL_MAKE = ""
 
 inherit deploy user-key-store
+
+#DEBUG_BUILD=1
 
 EXTRA_OEMAKE = "\
     CROSS_COMPILE="${TARGET_PREFIX}" \

@@ -36,7 +36,7 @@ do_install() {
     [ -z "${INITRAMFS_IMAGE}" ] && exit 0
 
     if [ "${BUNDLE}" = "0" ]; then
-        for suffix in cpio.gz cpio.lzo cpio.lzma cpio.xz; do
+        for suffix in ext4.gz cpio.gz cpio.lzo cpio.lzma cpio.xz; do
             img="${DEPLOY_DIR_IMAGE}/${INITRAMFS_IMAGE}-${MACHINE}.$suffix"
 
 	    if [ -s "$img" ]; then
