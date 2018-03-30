@@ -21,6 +21,7 @@ PV = "0.6.2+git${SRCPV}"
 
 SRC_URI = "\
     git://github.com/jiazhang0/cryptfs-tpm2.git \
+    file://0001-luks-setup.sh-remove-TSS2_TCTI-tabrmd.patch \
 "
 SRCREV = "4a3eb44436184597ce9fc207d6b7fa7ce0690c62"
 

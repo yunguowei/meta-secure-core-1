@@ -1,0 +1,36 @@
+From e677c62f0f0b10743a18674a11815591c87d5002 Mon Sep 17 00:00:00 2001
+From: Wenzong Fan <wenzong.fan@windriver.com>
+Date: Wed, 28 Mar 2018 06:44:00 +0000
+Subject: [PATCH 1/1] luks-setup.sh: remove TSS2_TCTI=tabrmd
+
+* tabrmd is the default tcti interface
+* workaround the failures:
+  $ export TPM2TOOLS_TCTI_NAME=abrmd
+  $ export TSS2_TCTI=tabrmd
+  $ cryptfs-tpm2 seal -P auto
+
+  read on istream 0x... produced error: \
+  Too large count value passed to g_input_stream_read
+
+Upstream-Status: Pending
+
+Signed-off-by: Wenzong Fan <wenzong.fan@windriver.com>
+---
+ scripts/luks-setup.sh | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/scripts/luks-setup.sh b/scripts/luks-setup.sh
+index 943c6ce..574359e 100755
+--- a/scripts/luks-setup.sh
++++ b/scripts/luks-setup.sh
+@@ -111,7 +111,6 @@ detect_tpm() {
+         TSS2_TCTI=device
+     } || {
+         TPM2TOOLS_TCTI_NAME=tabrmd
+-        TSS2_TCTI=tabrmd
+     }
+ 
+     export TPM2TOOLS_TCTI_NAME TSS2_TCTI
+-- 
+2.13.3
+
