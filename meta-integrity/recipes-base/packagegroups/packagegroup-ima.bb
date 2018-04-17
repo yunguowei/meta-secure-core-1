@@ -10,6 +10,7 @@ DEPENDS += "\
 RDEPENDS_${PN} += "\
     attr \
     util-linux-switch-root.static \
+    util-linux-pivot-root.static \
 "
 
 # Note any private key is not available if user key signing model used.
