@@ -120,7 +120,7 @@ done
 
 echo "${IMA_POLICY}" > "$securityfs_dir/ima/policy" && {
     # Attempt to load IMA policies from the real rootfs.
-    for policy in ${ROOT_DIR}/etc/ima/ima_policy*; do
+    for policy in /etc/ima/ima_policy*; do
         echo "$policy" > "$securityfs_dir/ima/policy"
     done
 
