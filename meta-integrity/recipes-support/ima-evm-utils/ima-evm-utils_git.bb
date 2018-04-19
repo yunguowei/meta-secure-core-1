@@ -10,6 +10,8 @@ SRC_URI = "\
     file://0001-Don-t-build-man-pages.patch \
     file://0001-Install-evmctl-to-sbindir-rather-than-bindir.patch \
     file://Fix-the-build-failure-with-openssl-1.1.x.patch \
+    file://0001-evmctl.c-do-not-depend-on-xattr.h-with-IMA-defines.patch \
+    file://0002-command-line-apply-operation-to-all-paths.patch \
 "
 SRCREV = "3e2a67bdb0673581a97506262e62db098efef6d7"
 

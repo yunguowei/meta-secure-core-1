@@ -2,7 +2,7 @@
 # set explicitly in a local.conf before activating ima-evm-rootfs.
 # To use the insecure (because public) example keys, use
 # IMA_EVM_KEY_DIR = "${IMA_EVM_BASE}/data/debug-keys"
-IMA_EVM_KEY_DIR ?= "/buildarea1/fli/wr-core-lts/layers/wrlabs-integration/files/sample-keys/ima_keys"
+IMA_EVM_KEY_DIR ?= "${IMA_KEYS_DIR}"
 
 # Private key for IMA signing. The default is okay when
 # using the example key directory.
@@ -51,7 +51,13 @@ ima_evm_sign_rootfs () {
     # To set the user without password when do sudo, please edit file /etc/sudoers
     # to add a new entry should look like
     # myuser ALL=(ALL) NOPASSWD:ALL for a single user.
-    sudo -S evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass="pulsar" -r -t f ./usr
+#    sudo -S evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass="pulsar" -r -t f ./usr
+
+    # Sign file with private IMA key. EVM not supported at the moment.
+    bbnote "IMA/EVM: signing files 'find ${IMA_EVM_ROOTFS_SIGNED}' with private key '${IMA_EVM_PRIVKEY}'"
+    find ${IMA_EVM_ROOTFS_SIGNED} | xargs -d "\n" --no-run-if-empty --verbose sudo evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass="pulsar"
+#    bbnote "IMA/EVM: hashing files 'find ${IMA_EVM_ROOTFS_HASHED}'"
+#    find ${IMA_EVM_ROOTFS_HASHED} | xargs -d "\n" --no-run-if-empty --verbose evmctl ima_hash
 }
 
 # Signing must run as late as possible in the do_rootfs task.
