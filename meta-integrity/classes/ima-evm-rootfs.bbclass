@@ -51,11 +51,11 @@ ima_evm_sign_rootfs () {
     # To set the user without password when do sudo, please edit file /etc/sudoers
     # to add a new entry should look like
     # myuser ALL=(ALL) NOPASSWD:ALL for a single user.
-#    sudo -S evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass="pulsar" -r -t f ./usr
+#    sudo env PATH=$PATH evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass="pulsar" -r -t f ./usr
 
     # Sign file with private IMA key. EVM not supported at the moment.
-    bbnote "IMA/EVM: signing files 'find ${IMA_EVM_ROOTFS_SIGNED}' with private key '${IMA_EVM_PRIVKEY}'"
-    find ${IMA_EVM_ROOTFS_SIGNED} | xargs -d "\n" --no-run-if-empty --verbose sudo evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass="pulsar"
+#    bbnote "IMA/EVM: signing files 'find ${IMA_EVM_ROOTFS_SIGNED}' with private key '${IMA_EVM_PRIVKEY}'"
+    find ${IMA_EVM_ROOTFS_SIGNED} | xargs -d "\n" --no-run-if-empty --verbose sudo env PATH=$PATH evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass="pulsar"
 #    bbnote "IMA/EVM: hashing files 'find ${IMA_EVM_ROOTFS_HASHED}'"
 #    find ${IMA_EVM_ROOTFS_HASHED} | xargs -d "\n" --no-run-if-empty --verbose evmctl ima_hash
 }
