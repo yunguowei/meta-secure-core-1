@@ -55,7 +55,8 @@ ima_evm_sign_rootfs () {
 
     # Sign file with private IMA key. EVM not supported at the moment.
 #    bbnote "IMA/EVM: signing files 'find ${IMA_EVM_ROOTFS_SIGNED}' with private key '${IMA_EVM_PRIVKEY}'"
-    find ${IMA_EVM_ROOTFS_SIGNED} | xargs -d "\n" --no-run-if-empty --verbose sudo env PATH=$PATH evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass="pulsar"
+#    sudo sh -c "export PATH=$PATH; find ${IMA_EVM_ROOTFS_SIGNED} | xargs -d '\n' --no-run-if-empty --verbose evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass=pulsar"
+     find ${IMA_EVM_ROOTFS_SIGNED} | xargs -d '\n' --no-run-if-empty --verbose evmctl ima_sign --hashalgo sha256 --key ${IMA_EVM_PRIVKEY} --pass="${WR_SAMPLE_IMA_PASSWORD}"
 #    bbnote "IMA/EVM: hashing files 'find ${IMA_EVM_ROOTFS_HASHED}'"
 #    find ${IMA_EVM_ROOTFS_HASHED} | xargs -d "\n" --no-run-if-empty --verbose evmctl ima_hash
 }
