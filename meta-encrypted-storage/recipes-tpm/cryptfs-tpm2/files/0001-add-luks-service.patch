@@ -1,0 +1,405 @@
+From 7ab6f7c8c33b98e664656b8fc287199f503e7c5d Mon Sep 17 00:00:00 2001
+From: Yunguo Wei <yunguo.wei@windriver.com>
+Date: Mon, 23 Apr 2018 19:05:38 +0800
+Subject: [PATCH] add luks service
+
+We move luks init to systemd.
+
+Signed-off-by: Yunguo Wei <yunguo.wei@windriver.com>
+---
+ scripts/init.luks    | 362 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ scripts/luks.service |  13 ++
+ 2 files changed, 375 insertions(+)
+ create mode 100755 scripts/init.luks
+ create mode 100644 scripts/luks.service
+
+diff --git a/scripts/init.luks b/scripts/init.luks
+new file mode 100755
+index 0000000..991ef01
+--- /dev/null
++++ b/scripts/init.luks
+@@ -0,0 +1,362 @@
++#!/bin/sh
++
++# BSD 2-clause "Simplified" License
++#
++# Copyright (c) 2016-2017, Wind River Systems, Inc.
++#
++# Redistribution and use in source and binary forms, with or without
++# modification, are permitted provided that the following conditions are met:
++#
++# 1) Redistributions of source code must retain the above copyright notice,
++# this list of conditions and the following disclaimer.
++#
++# 2) Redistributions in binary form must reproduce the above copyright notice,
++# this list of conditions and the following disclaimer in the documentation
++# and/or other materials provided with the distribution.
++#
++# 3) Neither the name of Wind River Systems nor the names of its contributors
++# may be used to endorse or promote products derived from this software
++# without specific prior written permission.
++#
++# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
++# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
++# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++# POSSIBILITY OF SUCH DAMAGE.
++#
++# Author:
++#        Lans Zhang <jia.zhang@windriver.com>
++#        Yunguo Wei <yunguo.wei@windriver.com>
++#
++
++#
++# Global constant settings
++#
++
++# The tmpfs filesystem used to temporarily place the
++# passphrase file.
++TMP_DIR="/tmp"
++
++# The file name of the plain passphrase.
++PASSPHRASE="passphrase"
++
++# The maxinum number of passphrase retry
++MAX_PASSPHRASE_RETRY_COUNT=3
++
++# The timeout (tenth of a second) for the rootfs device got ready
++MAX_TIMEOUT_FOR_WAITING_RAWDEV=60
++
++# The timeout (millisecond) upon awaiting the resource manager
++MAX_TIMEOUT_FOR_WAITING_RESOURCEMGR=3000
++
++# The prefix label for LUSK
++LUKS_PREFIX_LABEL="luks_"
++
++#
++# Global variable settings
++#
++
++ROOTFS_DIR="${1:-/}"
++ROOTFS_DEV="$2"
++ROOTFS_MODE="${3:-rw}"
++# The mapping name of device-mapper crypt target for
++# the LUKS partition.
++LUKS_NAME="${4:-cryptfs_tpm2}"
++
++TPM_TIS_MODULE_LOADED=0
++TPM_CRB_MODULE_LOADED=0
++TPM_DEVICE=""
++TMP_DIR_MOUNTED=0
++
++FLUXDATA_LABEL_NAME="fluxdata"
++ROOTFS_BACKUP_DIR="${ROOTFS_DIR}/ostree/deploy/pulsar-linux"
++print_critical() {
++    printf "\033[1;35m"
++    echo "$@"
++    printf "\033[0m"
++}
++
++print_error() {
++    printf "\033[1;31m"
++    echo "$@"
++    printf "\033[0m"
++}
++
++print_warning() {
++    printf "\033[1;33m"
++    echo "$@"
++    printf "\033[0m"
++}
++
++print_info() {
++    printf "\033[1;32m"
++    echo "$@"
++    printf "\033[0m"
++}
++
++print_verbose() {
++    printf "\033[1;36m"
++    echo "$@"
++    printf "\033[0m"
++}
++
++create_dir() {
++    local dir="$1"
++
++    if [ ! -d "$dir" ]; then
++        mkdir -p "$dir" || return 1
++    fi
++
++    return 0
++}
++
++detect_tpm_chip() {
++    local ret_absent="$1"
++
++    [ ! -e /sys/class/tpm ] && print_info "TPM subsystem is not enabled." && return 1
++
++    depmod -a 2>/dev/null
++    ! grep -q "^tpm_tis" /proc/modules && modprobe --quiet tpm_tis && TPM_TIS_MODULE_LOADED=1
++    ! grep -q "^tpm_crb" /proc/modules && modprobe --quiet tpm_crb && TPM_CRB_MODULE_LOADED=1
++
++    local tpm_devices=$(ls /sys/class/tpm)
++    [ -z "$tpm_devices" ] && print_info "No TPM chip detected." && return 1
++
++    local tpm_absent=1
++    local name=""
++    for name in $tpm_devices; do
++        grep -q "TCG version: 1.2" "/sys/class/tpm/$name/device/caps" 2>/dev/null &&
++            print_info "TPM 1.2 device $name is not supported." && break
++
++        grep -q "TPM 2.0 Device" "/sys/class/tpm/$name/device/description" 2>/dev/null &&
++            tpm_absent=0 && break
++    done
++
++    [ $tpm_absent -eq 1 ] && print_info "No supported TPM device found." && return 1
++
++    local name_in_dev="$name"
++    # /dev/tpm is the alias of /dev/tpm0.
++    [ "$name_in_dev" = "tpm0" ] && name_in_dev+=" tpm"
++
++    local _name=""
++    for _name in $name_in_dev; do
++        [ -c "/dev/$_name" ] && break
++
++        local major=$(cat "/sys/class/tpm/$name/dev" | cut -d ":" -f 1)
++        local minor=$(cat "/sys/class/tpm/$name/dev" | cut -d ":" -f 2)
++        ! mknod "/dev/$_name" c $major $minor &&
++            print_error "Unable to create tpm device node $_name." && return 1
++
++        TPM_DEVICE="/dev/$_name"
++
++        break
++    done
++
++    [ -n "$ret_absent" ] && eval $ret_absent=$tpm_absent
++
++    print_info "TPM device /dev/$_name detected."
++
++    return 0
++}
++
++open_luks_part_with_encrypted_passphrase() {
++    local luks_rawdev="$1"
++    local luks_name="$2"
++
++    while [ 1 ]; do
++        # Unseal the passphrase
++        cryptfs-tpm2 -q unseal passphrase -P auto -o "$TMP_DIR/$PASSPHRASE" 2>/dev/null
++        local res=$?
++
++        [ $res -eq 0 ] && break
++
++        print_error "Unable to unseal the passphrase with the error $res" && return 1
++    done
++
++    ! cryptsetup luksOpen --key-file "$TMP_DIR/$PASSPHRASE" "$luks_rawdev" "$luks_name" &&
++        print_error "Unable to open the LUKS partition $luks_rawdev with the encrypted passphrase" && return 1
++
++    print_verbose "The LUKS partition $luks_rawdev is opened with the encrypted passphrase"
++
++    # Remove the plain passphrase file
++    ! rm -f "$TMP_DIR/$PASSPHRASE" && print_error "Unable to remove the decrypted passphrase file" && return 1
++
++    return 0
++}
++
++open_luks_part_with_typed_passphrase() {
++    local luks_rawdev="$1"
++    local i=1
++    for i in `seq $MAX_PASSPHRASE_RETRY_COUNT`; do
++        cryptsetup luksOpen --key-file - "$luks_rawdev" "$LUKS_NAME" &&
++            print_verbose "The LUKS partition $luks_rawdev is opened with the typed passphrase" &&
++            return 0
++
++        [ $(($MAX_PASSPHRASE_RETRY_COUNT - $i)) -ne 0 ] &&
++            print_warning "Passphrase incorrect. $(($MAX_PASSPHRASE_RETRY_COUNT - $i))-time remaining ..."
++    done
++
++    print_error "Failed to open the LUKS partition $luks_rawdev with the typed passphrase"
++
++    return 1
++}
++
++
++mount_luks() {
++    local err=0
++
++    mount -o "$ROOTFS_MODE" "/dev/mapper/$LUKS_NAME" "$ROOTFS_DIR" ||
++        (err=1 && [ -e "/dev/mapper/$LUKS_NAME" ] && cryptsetup luksClose "$LUKS_NAME")
++
++    return $err
++}
++
++
++trap_handler() {
++    local err=$?
++
++    print_verbose "Cleaning up with exit code $err ..."
++
++    if [ $err -ne 0 ]; then
++        if [ -d "$ROOTFS_DIR" ]; then
++            umount "$ROOTFS_DIR" 2>/dev/null
++        fi
++
++        cryptsetup luksClose "$LUKS_NAME" 2>/dev/null
++    fi
++
++    rm -f "$TMP_DIR/$PASSPHRASE" 2>/dev/null
++
++    [ $TPM_TIS_MODULE_LOADED -eq 1 ] && modprobe --quiet -r tpm_tis
++    [ $TPM_CRB_MODULE_LOADED -eq 1 ] && modprobe --quiet -r tpm_crb    
++    [ ! -z "$TPM_DEVICE" ] && rm -f "$TPM_DEVICE" 2>/dev/null
++
++    if [ $TMP_DIR_MOUNTED -eq 1 ]; then
++        umount "$TMP_DIR" 2>/dev/null
++        rmdir --ignore-fail-on-non-empty "$TMP_DIR" 2>/dev/null
++    fi
++
++    unset TSS2_TCTI
++}
++
++
++luks_create() {
++
++    # Scan disk partitions with label="luks_xxx"
++    luks_label_to_be_created="$(blkid -s LABEL | grep LABEL=\"${LUKS_PREFIX_LABEL} | awk -F: '{ print $2 }' | cut -f 2 -d "\"" |xargs)"
++
++    [ -z "${luks_label_to_be_created}" ] && return 0
++
++    # retrieve the wic file
++    wic_file=${ROOTFS_BACKUP_DIR}/var/wic.wks.sample
++
++    # generate random seeds
++    rngd -r /dev/urandom --pid ${TMP_DIR}/rngd.pid
++
++    existing_luks=$(blkid -s TYPE | grep crypto_LUKS | wc -l)
++    for luks_label in ${luks_label_to_be_created}; do
++	luks_rawdev_path=`blkid -t LABEL="${luks_label}"  | awk -F: '{ print $1 }'`
++	label_name=${luks_label##*"${LUKS_PREFIX_LABEL}"}
++	fs_type=`blkid -t LABEL="luks_${label_name}" -s TYPE | awk -F: '{ print $2 }' | cut -f 2 -d "\""`
++
++	if [ X"${label_name}" = X"${FLUXDATA_LABEL_NAME}" ]; then
++		datadev=$(lsblk ${luks_rawdev_path} -n -o PKNAME)
++		datadevnum=$(echo ${luks_rawdev_path} | sed 's/\(.*\)\(.\)$/\2/')
++
++		echo "Expanding partition for ${FLUXDATA_LABEL_NAME}"
++		parted -s /dev/$datadev -- resizepart $datadevnum -1s
++
++		echo "Expanding FS for ${FLUXDATA_LABEL_NAME}"
++		resize2fs -f ${luks_rawdev_path}
++		partprobe && sync
++	fi
++
++	# evict all keys if there is no luks exists
++	if [ ${existing_luks} -eq 0 ]; then
++		cmd="luks-setup.sh -f -e -d ${luks_rawdev_path} -n ${LUKS_PREFIX_LABEL}${luks_rawdev_path##*/}"
++	else
++		# reuse previous key
++		cmd="luks-setup.sh -f -d ${luks_rawdev_path} -n ${LUKS_PREFIX_LABEL}${luks_rawdev_path##*/}"
++	fi
++	cmd="echo Y | $cmd"
++	eval "$cmd"
++
++	partprobe && sync
++
++	# foramt fs
++	mkfs.${fs_type} /dev/mapper/luks_${luks_rawdev_path##*/} -L ${label_name}
++
++	# mount poinst 
++	mnt_point=$(grep -w -E "${label_name}|luks_${label_name}" "${wic_file}"  | cut -f 2 -d " ")
++
++	if [ ! -z ${mnt_point} ]; then
++	    sed -i "/^\<LABEL\=${label_name}\>/d" ${ROOTFS_DIR}/etc/fstab
++            if [ ! -z ${mnt_point} ]; then
++	        [ ! -d ${ROOTFS_DIR}/${mnt_point} ] && mkdir -p ${ROOTFS_DIR}/${mnt_point}
++	        # update fstab item
++                echo "LABEL=${label_name} ${mnt_point}  auto defaults 0 0" >> ${ROOTFS_DIR}/etc/fstab
++            fi
++
++	    # restore fluxdata from backup
++	    if [ X"${label_name}" = X"${FLUXDATA_LABEL_NAME}" ]; then
++		mkdir -p ${TMP_DIR}/${label_name}
++		mount /dev/mapper/luks_${luks_rawdev_path##*/} ${TMP_DIR}/${label_name}
++
++		cp -arf ${ROOTFS_BACKUP_DIR}/var/* ${TMP_DIR}/${label_name}/
++		
++	    fi
++	fi
++	# luks-setup.sh always map luks after luks creation, we defer luks mapping to luks_map() 
++	umount /dev/mapper/luks_${luks_rawdev_path##*/}
++	luks-setup.sh -N -u -d "${luks_rawdev_path}" -n "luks_${luks_rawdev_path##*/}"
++
++	((existing_luks++))
++    done
++
++    # kill rngd daemon
++    pkill --signal KILL --pid ${TMP_DIR}/rngd.pid
++}
++
++luks_map () {
++
++    luks_rawdev_paths="$(blkid -s TYPE | grep crypto_LUKS | awk -F: '{ print $1 }')"
++
++    for luks_rawdev_path in ${luks_rawdev_paths}; do
++        luks-setup.sh -N -m -d "${luks_rawdev_path}" -n "luks_${luks_rawdev_path##*/}"
++	[ $? == 0 ] || {
++		print_warning "Unable to map luks partition!"
++		continue
++	}
++    done
++}
++
++# if no tpm module found, label "${LUSK_PREFIX_LABEL}xxx" should be renamed to "xxx"
++luks_relabel() {
++
++    luks_label_to_be_created="$(blkid -s LABEL | grep LABEL=\"${LUKS_PREFIX_LABEL} | awk -F: '{ print $2 }' | cut -f 2 -d "\"" |xargs)"
++
++    for luks_label in ${luks_label_to_be_created}; do
++        luks_rawdev_path=`blkid -t LABEL="${luks_label}"  | awk -F: '{ print $1 }'`
++        label_name=${luks_label##*"${LUKS_PREFIX_LABEL}"}
++
++	e2label ${luks_rawdev_path} ${label_name}
++    done
++}
++
++tpm_absent=1
++if  detect_tpm_chip tpm_absent ; then
++	luks_create
++	luks_map
++else
++	echo "No tpm 2.0 found, restoring partition label..."
++	luks_relabel
++fi
++
++trap "trap_handler $?" SIGINT EXIT
++exit 0
+diff --git a/scripts/luks.service b/scripts/luks.service
+new file mode 100644
+index 0000000..d8cfb59
+--- /dev/null
++++ b/scripts/luks.service
+@@ -0,0 +1,13 @@
++[Unit]
++Description=LUKS partition init service
++DefaultDependencies=no
++Before=flux-filesystem-expand.service
++
++[Service]
++Type=oneshot
++RemainAfterExit=yes
++ExecStart=/usr/bin/bash /sbin/init.luks
++TimeoutSec=2min
++
++[Install]
++WantedBy=multi-user.target
+-- 
+2.7.4
+
