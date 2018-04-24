@@ -1,5 +1,5 @@
 SRC_URI += "\
-    file:///tmp/0001-add-luks-service.patch \
+    file://0001-add-luks-service.patch \
 "
 
 do_install_append() {
