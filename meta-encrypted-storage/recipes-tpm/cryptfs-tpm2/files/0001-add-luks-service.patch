@@ -1,4 +1,4 @@
-From 7ab6f7c8c33b98e664656b8fc287199f503e7c5d Mon Sep 17 00:00:00 2001
+From 5e1e4ec5bbc17fd42255cab519dd6b7769fafce9 Mon Sep 17 00:00:00 2001
 From: Yunguo Wei <yunguo.wei@windriver.com>
 Date: Mon, 23 Apr 2018 19:05:38 +0800
 Subject: [PATCH] add luks service
@@ -7,18 +7,18 @@ We move luks init to systemd.
 
 Signed-off-by: Yunguo Wei <yunguo.wei@windriver.com>
 ---
- scripts/init.luks    | 362 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ scripts/init.luks    | 372 +++++++++++++++++++++++++++++++++++++++++++++++++++
  scripts/luks.service |  13 ++
- 2 files changed, 375 insertions(+)
+ 2 files changed, 385 insertions(+)
  create mode 100755 scripts/init.luks
  create mode 100644 scripts/luks.service
 
 diff --git a/scripts/init.luks b/scripts/init.luks
 new file mode 100755
-index 0000000..991ef01
+index 0000000..9c57190
 --- /dev/null
 +++ b/scripts/init.luks
-@@ -0,0 +1,362 @@
+@@ -0,0 +1,372 @@
 +#!/bin/sh
 +
 +# BSD 2-clause "Simplified" License
@@ -308,6 +308,8 @@ index 0000000..991ef01
 +	cmd="echo Y | $cmd"
 +	eval "$cmd"
 +
++	[ ! $? -eq 0 ] && return 1
++
 +	partprobe && sync
 +
 +	# foramt fs
@@ -342,6 +344,7 @@ index 0000000..991ef01
 +
 +    # kill rngd daemon
 +    pkill --signal KILL --pid ${TMP_DIR}/rngd.pid
++    return 0
 +}
 +
 +luks_map () {
@@ -370,10 +373,17 @@ index 0000000..991ef01
 +    done
 +}
 +
-+tpm_absent=1
-+if  detect_tpm_chip tpm_absent ; then
++
++detect_tpm_chip
++
++if [ $? -eq 0 ]; then
 +	luks_create
-+	luks_map
++	if [ $? -eq 0 ]; then
++	    luks_map
++	else
++	    "Create LUKS failed, restoring partition label..."
++	    luks_relabel
++        fi
 +else
 +	echo "No tpm 2.0 found, restoring partition label..."
 +	luks_relabel
