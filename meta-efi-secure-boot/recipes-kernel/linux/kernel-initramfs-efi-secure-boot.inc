@@ -1,7 +1,7 @@
 inherit user-key-store deploy
 
 # Always fetch the latest initramfs image
-do_install[nostamp] = "1"
+#do_install[nostamp] = "1"
 
 fakeroot python do_sign() {
     initramfs = None
